@@ -2,11 +2,35 @@ const Product = require("../models/productModel");
 const ErrorHandeler = require("../utils/errorHandeler");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ApiFeatures = require("../utils/apiFeatures");
+const cloudinary = require("cloudinary");
+const fs = require("fs");
 
 // create Product -- Admin
 exports.createProduct = catchAsyncErrors(async (req, res, next) => {
   req.body.user = req.user.id;
-  const product = await Product.create(req.body);
+  const { name, price, description, category, user } = await req.body;
+  const { image } = await req.files;
+
+  const myCloud = await cloudinary.v2.uploader.upload(image.tempFilePath, {
+    folder: "ecomSite/product",
+  });
+
+  fs.rmSync("./tmp", { recursive: true });
+
+  const pro = {
+    user: user,
+    name: name,
+    price: price,
+    description: description,
+    category: category,
+    image: {
+      public_id: myCloud.public_id,
+      url: myCloud.secure_url,
+    },
+  };
+
+  const product = await Product.create(pro);
+
   res.status(201).json({
     success: true,
     product,
@@ -23,11 +47,11 @@ exports.getAllProducts = catchAsyncErrors(async (req, res, next) => {
     .search()
     .filter()
     .pagination(resultPerPage);
-    
-    let product = await apiFeatures.query;
-    let filteredProduct = product.length;
 
-    console.log(product.length)
+  let product = await apiFeatures.query;
+  let filteredProduct = product.length;
+
+  console.log(product.length);
 
   res.status(200).json({
     success: true,
@@ -75,7 +99,17 @@ exports.deleteProduct = catchAsyncErrors(async (req, res, next) => {
   if (!product) {
     return next(new ErrorHandeler("Product Not Found", 404));
   }
-  await Product.remove();
+
+  product.image.map(async (cur) => {
+    console.log(cur.public_id);
+    await cloudinary.v2.uploader.destroy(cur.public_id, {
+      folder: "ecomSite/product",
+    });
+  });
+
+  console.log(product);
+  await Product.deleteOne();
+
   res.status(200).json({
     success: true,
     message: "Product Deleted SuccessFully",
